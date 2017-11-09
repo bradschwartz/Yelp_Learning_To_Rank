@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import json
-from collections import OrderedDict
+# from collections import OrderedDict
 
 def load_data(file_name):
 	with open(file_name) as file:
-		data = [json.loads(line, object_pairs_hooks=OrderedDict) for line in file]
+		data = [json.loads(line) for line in file]
 	return data
 
 

@@ -3,3 +3,5 @@ dataset/
 playdata/
 __pycache__/
 *.tar
+*.pyc
+*.pyo
