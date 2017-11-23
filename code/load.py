@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import json
-# from collections import OrderedDict
+from pandas.io.json import json_normalize
 
 def load_data(file_name):
 	with open(file_name) as file:
-		data = [json.loads(line) for line in file]
+		data = json_normalize([json.loads(line) for line in file])
+		# data = json_normalize([line for line in file])
 	return data
 
 
