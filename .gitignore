@@ -1,6 +1,6 @@
 .DS_Store
 dataset/
-playdata/
+#playdata/
 __pycache__/
 *.tar
 *.pyc

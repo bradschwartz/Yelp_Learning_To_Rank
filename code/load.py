@@ -14,7 +14,7 @@ def main():
 	file_name = sys.argv[1]
 	data = load_data(file_name)
 	print(data[0])
-	return load_data(file_name)
+	print(data.head())
 
 
 

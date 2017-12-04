@@ -40,6 +40,7 @@ def single_feature_vec(business):
 def main():
 	file_name = 'playdata/business.json'
 	data = load.load_data(file_name)
+	return data
 
 
 
