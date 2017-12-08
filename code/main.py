@@ -15,23 +15,26 @@ def main():
     business_df = load.load_data(prefix + files)
     stars = business_df.stars
     business_df = business_df.drop('stars', axis=1)
-    parameters = {'penalty': ('l2', 'elasticnet'), 'alpha': (0.00001, 0.000001)}
-    sgd = SGDClassifier(max_iter=10000)
-    
-
+    # base
     vect = TfidfVectorizer()
-    clf = GridSearchCV(sgd, parameters, verbose=1)
-
-
+    
     df = pd.DataFrame()
     df['text'] = []
     for column in business_df.columns:
         df['text'] = df['text'].map(str) + ' ' + business_df[column].map(str)
     vectorized = vect.fit_transform(df.text)
+    
+    parameters = {'penalty': ('l2', 'elasticnet'), 'alpha': (0.00001, 0.000001)}
+    sgd = SGDClassifier(max_iter=10)
+    clf = GridSearchCV(sgd, parameters, verbose=1, n_jobs=-1)
+
+
+   
     # pdb.set_trace()
-    clf.fit(vectorized, stars.as_matrix())
+    # clf.fit(vectorized, stars.map(str))
 
-
+    scores = cross_val_score(clf, vectorized, stars.map(str), cv=5)
+    print(scores)
     # files = ['business.json', 'checkin.json', 'review.json', 'tip.json']#, 'user.json'] # 'photos.json'
     # df = load.load_data(prefix + files[0])
     # business = df.copy()
