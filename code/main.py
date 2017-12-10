@@ -7,9 +7,10 @@ from sklearn.model_selection import cross_val_score, train_test_split, GridSearc
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer, HashingVectorizer, TfidfVectorizer
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.linear_model import SGDClassifier, LogisticRegression
-from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier, VotingClassifier, AdaBoostClassifier
+# from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.neural_network import MLPClassifier
+# from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from sklearn.tree import DecisionTreeClassifier
 import pdb
@@ -85,6 +86,18 @@ def cross_val(df, text_df, stars, pipeline, scoring, files, print_info):
         print("Used files:", ', '.join(files))
         print("Scores:{} Average:{}".format(scores, round(np.mean(scores), 3)))
 
+def classifiers_test(classifiers, X_train, X_test, y_train, y_test):
+    for clf, scoring in classifiers:
+        pipe = Pipeline([('tfid', TfidfVectorizer()),
+                        ('clf', clf)])
+        pipe.fit(X_train.text, y_train.map(str))
+        predictions = pipe.predict(X_test.text)
+        # conf_mtx = confusion_matrix(y_test.map(str), predictions)
+        print(clf.__module__)
+        print("\tAccuracy:", 100.0 * accuracy_score(y_test.map(str), predictions))
+        print("\tF1-Score:", f1_score(y_test.map(str), predictions, average='weighted'))
+        print()
+
 def main():
     np.random.seed(10000)
     files = ['business.json', 'tip.json','review.json', 'checkin.json' ] # 'photos.json']
@@ -109,16 +122,14 @@ def main():
                     # (MLPClassifier(alpha=1e-5, hidden_layer_sizes=(10,5)), None)
                     ]
 
-    for clf, scoring in classifiers:
-        pipe = Pipeline([('tfid', TfidfVectorizer()),
-                        ('clf', clf)])
-        pipe.fit(X_train.text, y_train.map(str))
-        predictions = pipe.predict(X_test.text)
-        # conf_mtx = confusion_matrix(y_test.map(str), predictions)
-        print(clf.__module__)
-        print("\tAccuracy:", 100.0 * accuracy_score(y_test.map(str), predictions))
-        print("\tF1-Score:", f1_score(y_test.map(str), predictions, average='weighted'))
-        print()
+    ensembles = [
+                # (RandomForestClassifier(), None),
+                # (GradientBoostingClassifier(n_estimators=10), None),
+                # (AdaBoostClassifier(MultinomialNB(), n_estimators=10), None),
+                (VotingClassifier([(clf.__module__+str(i), clf) for i, (clf, scoring) in enumerate(classifiers*2)]), None),
+                ]
+    # classifiers_test(classifiers, X_train, X_test, y_train, y_test)
+    classifiers_test(ensembles, X_train, X_test, y_train, y_test)
 
     # cross_val(df_train, X_train, y_train, pipe, None, files, True)
     # cross_val(df, text_df, stars, pipe, scoring, files, True)
