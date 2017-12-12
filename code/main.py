@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import pandas as pd
 import numpy as np
+# import matplotlib.pyplot as plt
 import load
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import cross_val_score, train_test_split, GridSearchCV
@@ -11,9 +12,8 @@ from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier,
 # from sklearn.cluster import KMeans, MiniBatchKMeans
 from sklearn.naive_bayes import MultinomialNB
 # from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, mean_squared_error
 from sklearn.tree import DecisionTreeClassifier
-import pdb
 
 PREFIX = '../playdata/'
 
@@ -49,7 +49,7 @@ def truth_sort(df, stars):
     """
     df['stars'] = stars.copy()
     sort_df = df.sort_values(by=['stars', 'review_count'],
-                          ascending=False)
+                          ascending=[False, False])
     df.drop('stars', axis=1, inplace=True)
     return sort_df
 
@@ -86,21 +86,105 @@ def cross_val(df, text_df, stars, pipeline, scoring, files, print_info):
         print("Used files:", ', '.join(files))
         print("Scores:{} Average:{}".format(scores, round(np.mean(scores), 3)))
 
-def classifiers_test(classifiers, X_train, X_test, y_train, y_test):
+def classifiers_test(classifiers, X_train, X_test, y_train, y_test, max_features, print_info):
+    scores = []
     for clf, scoring in classifiers:
-        pipe = Pipeline([('tfid', TfidfVectorizer()),
+        pipe = Pipeline([('tfid', TfidfVectorizer(max_features=max_features)),
                         ('clf', clf)])
         pipe.fit(X_train.text, y_train.map(str))
         predictions = pipe.predict(X_test.text)
         # conf_mtx = confusion_matrix(y_test.map(str), predictions)
-        print(clf.__module__)
-        print("\tAccuracy:", 100.0 * accuracy_score(y_test.map(str), predictions))
-        print("\tF1-Score:", f1_score(y_test.map(str), predictions, average='weighted'))
-        print()
+        accuracy = 100.0 * accuracy_score(y_test.map(str), predictions)
+        f1 = f1_score(y_test.map(str), predictions, average='weighted')
+        if print_info:
+            print(clf.__module__)
+            print("\tAccuracy:", )
+            print("\tF1-Score:", f1)
+            print()
+        scores.append((accuracy, f1))
+    return scores
+
+def ranking():
+    business, bstars = merge(['tail_business.json'], None)
+    business['stars'] = bstars
+    review, rstars = merge(['tail_review.json'], None)
+    print("Loaded data")
+    # review['stars'] = rstars
+    review_bid = set(review.business_id)
+    business_bid = set(business.business_id)
+
+    intersect_bid = review_bid.intersection(business_bid)
+    #Only businesses in the data we have
+    business = business[business.business_id.isin(intersect_bid)]
+    # review = review._get_numeric_data()
+    review['stars'] = rstars
+    test = review[review.business_id.isin(intersect_bid)].copy()
+    train = review[~review.business_id.isin(intersect_bid)].copy()
+
+    y_test = test.stars.copy()
+    test.drop('stars', axis=1, inplace=True)
+    X_test = test
+
+    y_train = train.stars.copy()
+    train.drop('stars', axis=1, inplace=True)
+    X_train = train
+
+    # X_train, X_test, y_train, y_test = train_test_split(review, rstars)
+
+
+
+    pipe = Pipeline([('tfid', TfidfVectorizer()),
+                    ('clf', SGDClassifier(max_iter=100))])
+    pipe.fit(X_train.text, y_train.map(str))
+    predictions = pipe.predict(X_test.text)
+    predictions = list(map(float, predictions))
+
+    # Predictions are 1-1 with X_test. Group by business Id and get mean as rank
+    X_test['predictions'] = predictions
+    means = X_test.groupby('business_id').mean()
+    # print(type(means))
+    # print(means)
+    # print(means.predictions)
+
+
+    sort_pred = means.sort_values(by=['predictions'],
+                                  ascending=[False])
+    sort_pred.reset_index(drop=False, inplace=True) 
+    sort_bus = business.sort_values(by=['stars', 'review_count'],
+                                    ascending=[False, False])
+    sort_bus.reset_index(drop=True, inplace=True)
+
+
+    # print(sort_pred)
+    # print(sort_bus[['business_id', 'stars']])
+
+    print("Num. Businesses:", len(sort_pred))
+    print("Correct Rank: ", (sort_pred.business_id == sort_bus.business_id).tolist())
+    print("MSE:",mean_squared_error(business.stars, means.predictions))
+
+    ranking_offset = []
+    for pred_idx, bid in enumerate(sort_pred.business_id):
+        bus_idx = sort_bus[sort_bus.business_id==bid].index.tolist()[0]
+        # print(bus_idx)
+        ranking_offset.append(abs(pred_idx - bus_idx))
+    print("Spots Off:", ranking_offset)
+    print("Avg. Spots Off:", np.mean(ranking_offset))
+    # print(100.0*accuracy_score(business.stars, means.predictions))
+    # print(np.mean(predictions))
+    # print(set(predictions))
+    return review, business, predictions
+
+def plot_data(accuracy):
+    num_features = [i*100 for i in range(len(arr))]
+    plt.plot(num_features_scores, accuracy)
+    plt.show()
 
 def main():
-    np.random.seed(10000)
-    files = ['business.json', 'tip.json','review.json', 'checkin.json' ] # 'photos.json']
+    np.random.seed(100)
+    ranking()
+    return
+    
+    files = ['business.json']#, 'tip.json','review.json', 'checkin.json' ] # 'photos.json']
     df, stars = merge(files, 0)   
     text_df = textify(df)
     num_clusters = len(set(stars))
@@ -114,12 +198,13 @@ def main():
     # GridSearchCV(clf, grid_parameters, verbose=1, n_jobs=1)
 
     # (Classifer, Scoring Method)
-    classifiers = [(LogisticRegression(max_iter=100), None),
+    classifiers = [
+                    # (LogisticRegression(max_iter=100), None),
                     (SGDClassifier(max_iter=100), None),
                     # (MiniBatchKMeans(n_clusters=num_clusters, max_iter=10), 'adjusted_rand_score'),
-                    (MultinomialNB(), None),
-                    (DecisionTreeClassifier(), None),
-                    # (MLPClassifier(alpha=1e-5, hidden_layer_sizes=(10,5)), None)
+                    # (MultinomialNB(), None),
+                    # (DecisionTreeClassifier(), None),
+                    # (MLPClassifier(alpha=1e-5, hidden_layer_sizes=(5,2)), None)
                     ]
 
     ensembles = [
@@ -128,8 +213,13 @@ def main():
                 # (AdaBoostClassifier(MultinomialNB(), n_estimators=10), None),
                 (VotingClassifier([(clf.__module__+str(i), clf) for i, (clf, scoring) in enumerate(classifiers*2)]), None),
                 ]
-    # classifiers_test(classifiers, X_train, X_test, y_train, y_test)
-    classifiers_test(ensembles, X_train, X_test, y_train, y_test)
+
+    # num_features_scores = [classifiers_test(classifiers, X_train, X_test, y_train, y_test, num_features, False) for num_features in range(100,2100, 100)]
+    # print(num_features_scores)
+    # accuracy = [acc for (acc, f1) in num_features_scores]
+    # plot_data(accuracy)
+    classifiers_test(classifiers, X_train, X_test, y_train, y_test, None, True)
+    # classifiers_test(ensembles, X_train, X_test, y_train, y_test)
 
     # cross_val(df_train, X_train, y_train, pipe, None, files, True)
     # cross_val(df, text_df, stars, pipe, scoring, files, True)
