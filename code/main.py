@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import pandas as pd
 import numpy as np
-# import matplotlib.pyplot as plt
 import load
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import cross_val_score, train_test_split, GridSearchCV
@@ -104,11 +103,12 @@ def classifiers_test(classifiers, X_train, X_test, y_train, y_test, max_features
         scores.append((accuracy, f1))
     return scores
 
-def ranking():
-    business, bstars = merge(['tail_business.json'], None)
+def ranking(bfile, rfile, print_info):
+    business, bstars = merge([bfile], None)
     business['stars'] = bstars
-    review, rstars = merge(['tail_review.json'], None)
+    review, rstars = merge([rfile], None)
     print("Loaded data")
+
     # review['stars'] = rstars
     review_bid = set(review.business_id)
     business_bid = set(business.business_id)
@@ -158,21 +158,29 @@ def ranking():
     # print(sort_pred)
     # print(sort_bus[['business_id', 'stars']])
 
-    print("Num. Businesses:", len(sort_pred))
-    print("Correct Rank: ", (sort_pred.business_id == sort_bus.business_id).tolist())
-    print("MSE:",mean_squared_error(business.stars, means.predictions))
-
+    mse = mean_squared_error(sort_bus.stars, sort_pred.predictions)
     ranking_offset = []
     for pred_idx, bid in enumerate(sort_pred.business_id):
         bus_idx = sort_bus[sort_bus.business_id==bid].index.tolist()[0]
         # print(bus_idx)
         ranking_offset.append(abs(pred_idx - bus_idx))
-    print("Spots Off:", ranking_offset)
-    print("Avg. Spots Off:", np.mean(ranking_offset))
-    # print(100.0*accuracy_score(business.stars, means.predictions))
-    # print(np.mean(predictions))
-    # print(set(predictions))
-    return review, business, predictions
+    rank_mean = np.mean(ranking_offset)
+    correct_list = (sort_pred.business_id == sort_bus.business_id).tolist()
+    num_correct = sum(correct_list)
+    if print_info:
+        print("Num. Businesses:", len(sort_pred))
+        print("Correct Rank: ", correct_list)
+        print("MSE:", mse)
+
+        print("Spots Off:", ranking_offset)
+        print("Avg. Spots Off:", rank_mean)
+
+        # print(100.0*accuracy_score(business.stars, means.predictions))
+        # print(np.mean(predictions))
+        # print(set(predictions))
+
+
+    return sort_pred, sort_bus, ranking_offset, rank_mean, mse, num_correct
 
 def plot_data(accuracy):
     num_features = [i*100 for i in range(len(arr))]
@@ -180,8 +188,49 @@ def plot_data(accuracy):
     plt.show()
 
 def main():
+
     np.random.seed(100)
-    ranking()
+    mixes = [
+            ('business.json', 'review.json'), 
+            ('tail_business.json', 'review.json'),
+            ('business.json', 'tail_review.json'),
+            ('tail_business.json', 'tail_review.json'),
+            ]
+
+    # (files), sort_pred, sort_bus, ranking_offset, rank_mean, mse, num_correct
+    mix_results = []
+    for mix in mixes:
+        mix_results.append([mix])
+        mix_results[-1].extend(ranking(mix[0], mix[1], False))
+
+    mix_results.sort(key=lambda x: len(x[1]))
+    # for ranked in mix_results:
+    #     print(ranked[-2:])
+    means = [mean[4] for mean in mix_results]
+    mse = [m[5] for m in mix_results]
+    num_bus = [len(bus[1]) for bus in mix_results]
+    print([(num, mix_results[i][6]) for i, num in enumerate(num_bus)])
+    import matplotlib.pyplot as plt
+    ind = np.arange(len(num_bus))
+    fig, ax = plt.subplots()
+    mean_plot = ax.bar(ind, means)
+    
+    ax.set_xlabel('Number of Businesses Ranked')
+    ax.set_ylabel('Average')
+    ax.set_title('Average Number of Positions Ranked Incorrectly')
+    ax.set_xticks(ind)
+    ax.set_xticklabels(tuple(str(i) for i in num_bus))
+    plt.savefig('Ranked_Mean_Off.png')
+
+    fig, ax = plt.subplots()
+    mse_plot = ax.bar(ind, mse)
+
+    ax.set_xlabel('Number of Businesses Ranked')
+    ax.set_ylabel('MSE')
+    ax.set_title('Mean Squared Error of Predicted Rankings')
+    ax.set_xticks(ind)
+    ax.set_xticklabels(tuple(str(i) for i in num_bus))
+    plt.savefig('MSE_Predicted_Rankings.png')
     return
     
     files = ['business.json']#, 'tip.json','review.json', 'checkin.json' ] # 'photos.json']
